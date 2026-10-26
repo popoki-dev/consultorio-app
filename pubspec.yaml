@@ -1,0 +1,47 @@
+name: consultorio
+description: Gestão de agenda, pacientes, receitas, exames e lembretes para consultório (offline-first).
+publish_to: 'none'
+version: 1.2.0+3
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # Estado
+  provider: ^6.1.2
+
+  # Banco local cifrado (SQLCipher) + chave no Keystore/Keychain
+  sqflite_sqlcipher: ^3.1.0
+  path: ^1.9.0
+  path_provider: ^2.1.4
+  flutter_secure_storage: ^9.2.2
+
+  # Bloqueio por biometria / senha do aparelho
+  local_auth: ^2.3.0
+
+  # Lembretes (notificações locais agendadas, funcionam offline)
+  flutter_local_notifications: ^18.0.1
+  timezone: ">=0.9.4 <0.11.0"
+  flutter_timezone: ^5.1.1
+
+  # Sincronização entre aparelhos
+  supabase_flutter: ^2.8.0
+
+  # Preferências e exportação (LGPD)
+  shared_preferences: ^2.3.2
+  share_plus: ^10.1.0
+  uuid: ^4.4.0
+  file_picker: 10.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
