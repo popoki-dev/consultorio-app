@@ -124,7 +124,7 @@ void main() {
       sex: Sex.female,
       phone: '11999990000',
       document: '12345678900',
-      careLineId: 'cl-diabetes',
+      careLineIds: ['cl-diabetes', 'cl-hipertensao'],
       cidCodes: ['E11'],
       notes: 'Alergia a dipirona',
     )..scrub();
@@ -134,6 +134,7 @@ void main() {
     }
     expect(map['name'], '');
     expect(map['cid_codes'], '');
+    expect(map['care_line_ids'], '');
     expect(map['id'], 'p1');
     expect(map['created_at'], isNotNull);
 
@@ -153,5 +154,104 @@ void main() {
     final row = LocalDb.withoutLocalColumns(
         {'id': 'x', 'updated_at': 't', 'dirty': 1, 'base_updated_at': 't'});
     expect(row.keys, ['id', 'updated_at']);
+  });
+
+  group('receitas que vencem no mesmo dia', () {
+    Prescription rx(String id, String patientId, String med, DateTime expires, {bool resolved = false}) =>
+        Prescription(
+          id: id,
+          patientId: patientId,
+          medication: med,
+          issuedAt: addDays(now, -30),
+          expiresAt: expires,
+          resolved: resolved,
+        );
+
+    test('do mesmo paciente viram um lembrete só', () {
+      final due = addDays(now, 10);
+      data.replaceAll(patients: [
+        _patient('p1')
+      ], prescriptions: [
+        rx('r1', 'p1', 'Metformina', due),
+        rx('r2', 'p1', 'Losartana', due),
+        rx('r3', 'p1', 'AAS', addDays(now, 40)),
+        rx('r4', 'p1', 'Sinvastatina', due, resolved: true),
+      ]);
+      expect(data.reminders, hasLength(2));
+      final same = data.reminders.first;
+      expect(same.due, due);
+      expect(same.sources.map((s) => s.id), ['r2', 'r1'], reason: 'ordem alfabética');
+      expect(same.label, 'Receitas (2)');
+      expect(same.title, 'Receitas: Losartana, Metformina');
+      expect(data.reminders.last.label, 'Receita');
+    });
+
+    test('de pacientes diferentes continuam separados', () {
+      final due = addDays(now, 10);
+      data.replaceAll(
+        patients: [_patient('p1'), _patient('p2')],
+        prescriptions: [rx('r1', 'p1', 'Metformina', due), rx('r2', 'p2', 'Metformina', due)],
+      );
+      expect(data.reminders, hasLength(2));
+      expect(data.reminders.every((r) => r.sources.length == 1), isTrue);
+    });
+  });
+
+  test('receituários do paciente: agrupados, mais recente primeiro', () {
+    Prescription rx(String id, String? group, String med, DateTime issued) => Prescription(
+          id: id,
+          patientId: 'p1',
+          medication: med,
+          issuedAt: issued,
+          expiresAt: addDays(issued, 30),
+          groupId: group,
+        );
+    data.replaceAll(patients: [
+      _patient('p1')
+    ], prescriptions: [
+      rx('r1', 'g1', 'Metformina', addDays(now, -60)),
+      rx('r2', 'g1', 'Glicazida', addDays(now, -60)),
+      rx('r3', null, 'Losartana', addDays(now, -90)), // anterior à v1.3
+      rx('r4', 'g2', 'AAS', addDays(now, -5)),
+    ]);
+    final groups = data.receituariosOf('p1');
+    expect(groups.map((g) => g.map((r) => r.id).toList()), [
+      ['r4'],
+      ['r2', 'r1'],
+      ['r3'],
+    ]);
+  });
+
+  group('linhas de cuidado do paciente', () {
+    test('várias linhas: grava a primeira também em care_line_id', () {
+      final p = Patient(id: 'p1', name: 'X', careLineIds: ['cl-diabetes', 'cl-hipertensao']);
+      final map = p.toMap();
+      expect(map['care_line_ids'], 'cl-diabetes,cl-hipertensao');
+      expect(map['care_line_id'], 'cl-diabetes');
+      expect(Patient.fromMap(map).careLineIds, ['cl-diabetes', 'cl-hipertensao']);
+    });
+
+    test('registro anterior à v1.3 só tem care_line_id', () {
+      final map = Patient(id: 'p1', name: 'X').toMap()
+        ..remove('care_line_ids')
+        ..['care_line_id'] = 'cl-diabetes';
+      expect(Patient.fromMap(map).careLineIds, ['cl-diabetes']);
+    });
+
+    test('alteração feita por um aparelho com versão anterior do app prevalece', () {
+      final map = Patient(id: 'p1', name: 'X', careLineIds: ['cl-diabetes', 'cl-hipertensao']).toMap();
+      // A versão anterior trocou a linha (só conhece care_line_id).
+      expect(Patient.fromMap({...map, 'care_line_id': 'cl-saude-idoso'}).careLineIds, ['cl-saude-idoso']);
+      // A versão anterior tirou a linha.
+      expect(Patient.fromMap({...map, 'care_line_id': null}).careLineIds, isEmpty);
+    });
+
+    test('linha excluída não aparece', () {
+      data.replaceAll(
+        careLines: [CareLine(id: 'cl-diabetes', name: 'Diabetes', color: 0)],
+        patients: [Patient(id: 'p1', name: 'X', careLineIds: ['cl-excluida', 'cl-diabetes'])],
+      );
+      expect(data.careLinesOf(data.patient('p1')).map((l) => l.id), ['cl-diabetes']);
+    });
   });
 }

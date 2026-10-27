@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqflite_sqlcipher/sqflite.dart';
@@ -132,23 +133,44 @@ class LocalDb {
     for (final t in syncedTables) (t, 'base_updated_at'), // v2
     ('patients', 'dum'), // v3: gestação
     ('patients', 'pregnancy_end'), // v3
+    ('patients', 'care_line_ids'), // v4: várias linhas de cuidado
+    ('prescriptions', 'group_id'), // v4: receituário com vários medicamentos
   ];
+
+  static const _version = 4;
 
   Future<Database> _openWith(String path, String key) => openDatabase(
         path,
         password: key,
-        version: 3,
-        onCreate: (db, version) async {
-          for (final stmt in _schema) {
-            await db.execute(stmt);
-          }
-        },
+        version: _version,
+        onCreate: _createSchema,
         // As colunas novas são conferidas uma a uma em onOpen, então qualquer
         // versão anterior (ou um banco de outra versão do app) fica completa.
         onUpgrade: (db, from, to) async {},
         onDowngrade: (db, from, to) async {},
         onOpen: _ensureColumns,
       );
+
+  /// Banco sem cifra, com o mesmo esquema, para os testes
+  /// (sqflite_common_ffi em memória).
+  @visibleForTesting
+  Future<void> openForTest(DatabaseFactory factory, String path) async {
+    db = await factory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: _version,
+        onCreate: _createSchema,
+        onOpen: _ensureColumns,
+        singleInstance: false,
+      ),
+    );
+  }
+
+  static Future<void> _createSchema(Database db, int version) async {
+    for (final stmt in _schema) {
+      await db.execute(stmt);
+    }
+  }
 
   static Future<void> _ensureColumns(Database db) async {
     for (final (table, column) in _addedColumns) {

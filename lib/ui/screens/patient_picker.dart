@@ -104,13 +104,13 @@ class _PatientPickerSheetState extends State<_PatientPickerSheet> {
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (_, i) {
                         final p = list[i];
-                        final line = data.careLine(p.careLineId);
+                        final lines = data.careLinesOf(p);
                         return OutlinedCard(
                           padding: const EdgeInsets.all(10),
                           onTap: () => Navigator.pop(context, p),
                           child: Row(
                             children: [
-                              Avatar(name: p.name, color: line?.colorValue ?? AppColors.yellowSoft, size: 38),
+                              Avatar(name: p.name, color: lines.firstOrNull?.colorValue ?? AppColors.yellowSoft, size: 38),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
@@ -118,7 +118,7 @@ class _PatientPickerSheetState extends State<_PatientPickerSheet> {
                                   children: [
                                     Text(p.name, style: const TextStyle(fontWeight: FontWeight.w700)),
                                     Text(
-                                      [ageLabel(p.birthDate), if (line != null) line.name].join(' · '),
+                                      [ageLabel(p.birthDate), ...lines.map((l) => l.name)].join(' · '),
                                       style: const TextStyle(color: AppColors.muted, fontSize: 12),
                                     ),
                                   ],

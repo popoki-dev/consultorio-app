@@ -175,7 +175,7 @@ class _AppointmentTile extends StatelessWidget {
     final data = context.read<AppData>();
     final a = appointment;
     final p = data.patient(a.patientId);
-    final line = data.careLine(p?.careLineId);
+    final lines = data.careLinesOf(p);
     final cancelled = a.status == ApptStatus.cancelled;
 
     return Opacity(
@@ -218,7 +218,7 @@ class _AppointmentTile extends StatelessWidget {
                   const SizedBox(height: 3),
                   Row(
                     children: [
-                      if (line != null) ...[
+                      for (final line in lines) ...[
                         Container(
                           width: 9,
                           height: 9,
@@ -228,11 +228,12 @@ class _AppointmentTile extends StatelessWidget {
                             border: Border.all(color: AppColors.ink, width: 0.8),
                           ),
                         ),
-                        const SizedBox(width: 5),
+                        const SizedBox(width: 3),
                       ],
+                      if (lines.isNotEmpty) const SizedBox(width: 2),
                       Flexible(
                         child: Text(
-                          [if (line != null) line.name, if (p != null) ageLabel(p.birthDate)].join(' · '),
+                          [...lines.map((l) => l.name), if (p != null) ageLabel(p.birthDate)].join(' · '),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(fontSize: 12, color: AppColors.muted),

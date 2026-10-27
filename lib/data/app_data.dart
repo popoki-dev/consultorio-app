@@ -113,6 +113,13 @@ class AppData extends ChangeNotifier {
   Patient? patient(String? id) => id == null ? null : _patients[id];
   CareLine? careLine(String? id) => id == null ? null : _careLines[id];
 
+  /// Linhas de cuidado do paciente que ainda existem, na ordem do cadastro.
+  List<CareLine> careLinesOf(Patient? p) => [
+        if (p != null)
+          for (final id in p.careLineIds)
+            if (_careLines[id] case final line?) line,
+      ];
+
   List<Appointment> appointmentsOn(DateTime day) =>
       appointments.where((a) => sameDay(a.startAt, day)).toList();
 
@@ -121,6 +128,19 @@ class AppData extends ChangeNotifier {
 
   List<Prescription> prescriptionsOf(String patientId) =>
       prescriptions.where((r) => r.patientId == patientId).toList();
+
+  /// Receituários do paciente, do mais recente ao mais antigo; os
+  /// medicamentos de cada um em ordem alfabética.
+  List<List<Prescription>> receituariosOf(String patientId) {
+    final groups = <String, List<Prescription>>{};
+    for (final r in prescriptionsOf(patientId)) {
+      groups.putIfAbsent(r.groupKey, () => []).add(r);
+    }
+    for (final g in groups.values) {
+      g.sort((a, b) => normalize(a.medication).compareTo(normalize(b.medication)));
+    }
+    return groups.values.toList()..sort((a, b) => b.first.issuedAt.compareTo(a.first.issuedAt));
+  }
 
   List<Exam> examsOf(String patientId) =>
       exams.where((e) => e.patientId == patientId).toList();
@@ -193,20 +213,30 @@ class AppData extends ChangeNotifier {
         patient: _patients[pid]!,
         due: src.returnDue!,
         title: 'Retorno previsto (última consulta ${fmtDate(src.startAt)})',
-        source: src,
+        sources: [src],
       ));
     });
 
+    // Medicamentos do mesmo paciente que vencem no mesmo dia viram um
+    // lembrete só, mesmo que sejam de receituários diferentes.
+    final rxByDue = <(String, DateTime), List<Prescription>>{};
     for (final r in prescriptions) {
       if (r.resolved) continue;
+      rxByDue.putIfAbsent((r.patientId, dateOnly(r.expiresAt)), () => []).add(r);
+    }
+    rxByDue.forEach((key, list) {
+      list.sort((a, b) => normalize(a.medication).compareTo(normalize(b.medication)));
+      final only = list.length == 1 ? list.single : null;
       out.add(Reminder(
         kind: ReminderKind.prescription,
-        patient: _patients[r.patientId]!,
-        due: r.expiresAt,
-        title: 'Receita: ${r.medication}${r.dosage == null ? '' : ' · ${r.dosage}'}',
-        source: r,
+        patient: _patients[key.$1]!,
+        due: key.$2,
+        title: only != null
+            ? 'Receita: ${only.medication}${only.dosage == null ? '' : ' · ${only.dosage}'}'
+            : 'Receitas: ${list.map((r) => r.medication).join(', ')}',
+        sources: list,
       ));
-    }
+    });
 
     for (final e in exams) {
       if (e.resolved || e.nextDue == null) continue;
@@ -215,7 +245,7 @@ class AppData extends ChangeNotifier {
         patient: _patients[e.patientId]!,
         due: e.nextDue!,
         title: 'Repetir exame: ${e.name}',
-        source: e,
+        sources: [e],
       ));
     }
 
@@ -225,10 +255,18 @@ class AppData extends ChangeNotifier {
 
   // ------------------------------------------------------------- gravação
 
-  Future<void> _save(Entity e) async {
-    e.updatedAt = nowUtcIso();
+  Future<void> _save(Entity e) => _saveAll([e]);
+
+  /// Grava tudo numa única transação.
+  Future<void> _saveAll(List<Entity> entities) async {
+    final now = nowUtcIso();
+    final byTable = <String, List<Map<String, Object?>>>{};
+    for (final e in entities) {
+      e.updatedAt = now;
+      byTable.putIfAbsent(e.tableName, () => []).add(e.toMap());
+    }
     try {
-      await db.write(e.tableName, e.toMap());
+      await db.writeAll(byTable);
     } finally {
       // As telas editam o objeto em memória antes de salvar; recarregar
       // também em caso de erro desfaz o que não chegou ao banco.
@@ -242,24 +280,39 @@ class AppData extends ChangeNotifier {
   Future<void> saveAppointment(Appointment a) => _save(a);
   Future<void> saveExam(Exam e) => _save(e);
 
-  /// Ao registrar uma receita nova do mesmo medicamento, as anteriores
-  /// deixam de gerar lembrete.
-  Future<void> savePrescription(Prescription r) async {
-    final key = normalize(r.medication.trim());
-    final now = nowUtcIso();
-    for (final old in prescriptions) {
-      if (old.id != r.id &&
-          old.patientId == r.patientId &&
-          !old.resolved &&
-          normalize(old.medication.trim()) == key &&
-          !old.issuedAt.isAfter(r.issuedAt)) {
-        old
-          ..resolved = true
-          ..updatedAt = now;
-        await db.write(Prescription.table, old.toMap());
+  /// Grava um receituário numa única transação. [removed] são os
+  /// medicamentos tirados dele na edição. Uma receita nova de um
+  /// medicamento encerra as anteriores do mesmo medicamento (deixam de
+  /// gerar lembrete).
+  Future<void> saveReceituario(
+    List<Prescription> items, {
+    List<Prescription> removed = const [],
+  }) async {
+    final mine = {...items.map((r) => r.id), ...removed.map((r) => r.id)};
+    final rows = <Entity>[...items];
+    for (final item in items) {
+      final key = normalize(item.medication.trim());
+      for (final old in prescriptions) {
+        if (!mine.contains(old.id) &&
+            old.patientId == item.patientId &&
+            !old.resolved &&
+            normalize(old.medication.trim()) == key &&
+            !old.issuedAt.isAfter(item.issuedAt)) {
+          old.resolved = true;
+          mine.add(old.id);
+          rows.add(old);
+        }
       }
     }
-    await _save(r);
+    final now = nowUtcIso();
+    for (final r in removed) {
+      r
+        ..scrub()
+        ..deletedAt = now;
+      rows.add(r);
+    }
+    await _saveAll(rows);
+    if (removed.isNotEmpty) await db.purgeConflicts(removed.map((r) => r.id));
   }
 
   Future<void> delete(Entity e) => deleteMany([e]);
@@ -299,15 +352,16 @@ class AppData extends ChangeNotifier {
   }
 
   Future<void> setReminderResolved(Reminder r, bool resolved) async {
-    final s = r.source;
-    if (s is Appointment) {
-      s.returnResolved = resolved;
-    } else if (s is Prescription) {
-      s.resolved = resolved;
-    } else if (s is Exam) {
-      s.resolved = resolved;
+    for (final s in r.sources) {
+      if (s is Appointment) {
+        s.returnResolved = resolved;
+      } else if (s is Prescription) {
+        s.resolved = resolved;
+      } else if (s is Exam) {
+        s.resolved = resolved;
+      }
     }
-    await _save(s);
+    await _saveAll(r.sources);
   }
 
   Future<void> insertBulk(Map<String, List<Entity>> rows) async {

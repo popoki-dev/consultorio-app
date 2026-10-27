@@ -50,7 +50,7 @@ class PatientListScreen extends StatelessWidget {
                 final p = list[i - 1];
                 return PatientCard(
                   patient: p,
-                  line: data.careLine(p.careLineId),
+                  lines: data.careLinesOf(p),
                   lastVisit: lastVisits[p.id],
                   pending: pending[p.id] ?? 0,
                 );

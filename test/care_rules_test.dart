@@ -29,7 +29,7 @@ void main() {
 
     test('retorno sugerido para gestante é mensal até 28 semanas', () {
       final p = Patient(id: 'g', name: 'Gestante', sex: Sex.female, dum: dum);
-      final s = suggestReturn(p, null, measured)!;
+      final s = suggestReturn(p, const [], measured)!;
       expect(s.date, DateTime(2026, 11, 13));
       expect(s.reason, contains('20 semanas e 3 dias'));
       expect(s.reason, contains('mensal'));
@@ -43,23 +43,23 @@ void main() {
             dum: dumFromGestationalAge(weeks: weeks, days: days, measuredOn: on),
           );
       // 27s2d: +28 dias cairia em 31 semanas; a partir de 28 é quinzenal.
-      expect(suggestReturn(at(27, 2), null, on)!.date, addDays(on, 14));
-      expect(suggestReturn(at(27, 2), null, on)!.reason, contains('quinzenais'));
+      expect(suggestReturn(at(27, 2), const [], on)!.date, addDays(on, 14));
+      expect(suggestReturn(at(27, 2), const [], on)!.reason, contains('quinzenais'));
       // 35s0d: +14 cairia em 37 semanas; a partir de 36 é semanal.
-      expect(suggestReturn(at(35, 0), null, on)!.date, addDays(on, 7));
+      expect(suggestReturn(at(35, 0), const [], on)!.date, addDays(on, 7));
       // 24s0d: +28 = exatamente 28s0d, início da fase quinzenal: mantém.
-      expect(suggestReturn(at(24, 0), null, on)!.date, addDays(on, 28));
+      expect(suggestReturn(at(24, 0), const [], on)!.date, addDays(on, 28));
       // 24s1d: +28 passaria de 28 semanas → 14 dias.
-      expect(suggestReturn(at(24, 1), null, on)!.date, addDays(on, 14));
+      expect(suggestReturn(at(24, 1), const [], on)!.date, addDays(on, 14));
       // 32s0d: +14 = exatamente 36s0d: mantém quinzenal.
-      expect(suggestReturn(at(32, 0), null, on)!.date, addDays(on, 14));
+      expect(suggestReturn(at(32, 0), const [], on)!.date, addDays(on, 14));
     });
 
     test('gestação encerrada não sugere calendário de pré-natal', () {
       final p = Patient(id: 'g', name: 'X', dum: dum, pregnancyEnd: DateTime(2026, 9, 1));
       expect(p.pregnant, isFalse);
       expect(pregnantOn(p, measured), isFalse);
-      expect(suggestReturn(p, null, measured), isNull);
+      expect(suggestReturn(p, const [], measured), isNull);
     });
   });
 
@@ -97,7 +97,7 @@ void main() {
 
     test('retorno sugerido para criança é a consulta do próximo mês', () {
       final p = Patient(id: 'c', name: 'Bebê', birthDate: birth);
-      final s = suggestReturn(p, null, DateTime(2026, 10, 12))!;
+      final s = suggestReturn(p, const [], DateTime(2026, 10, 12))!;
       expect(s.date, DateTime(2026, 11, 10));
       expect(s.reason, contains('4º mês'));
     });
@@ -106,7 +106,22 @@ void main() {
       final p = Patient(id: 'c', name: 'Criança', birthDate: DateTime(2024, 1, 1));
       final line = CareLine(id: 'l', name: 'Puericultura', color: 0, defaultReturnDays: 30);
       expect(isInfant(p, on), isFalse);
-      expect(suggestReturn(p, line, on)!.date, addDays(on, 30));
+      expect(suggestReturn(p, [line], on)!.date, addDays(on, 30));
     });
+  });
+
+  test('paciente em várias linhas: vale o menor intervalo', () {
+    final on = DateTime(2026, 10, 16);
+    final p = Patient(id: 'p', name: 'Adulto', birthDate: DateTime(1960, 1, 1));
+    final lines = [
+      CareLine(id: 'h', name: 'Hipertensão', color: 0, defaultReturnDays: 90),
+      CareLine(id: 'm', name: 'Saúde Mental', color: 0, defaultReturnDays: 30),
+      CareLine(id: 's', name: 'Sem intervalo', color: 0),
+    ];
+    final s = suggestReturn(p, lines, on)!;
+    expect(s.date, addDays(on, 30));
+    expect(s.reason, contains('Saúde Mental'));
+    expect(s.reason, contains('menor intervalo'));
+    expect(suggestReturn(p, [lines.first], on)!.reason, 'Hipertensão: retorno a cada 90 dias.');
   });
 }

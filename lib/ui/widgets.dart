@@ -773,11 +773,21 @@ class HBarItem {
 /// Barras horizontais rotuladas: categoria escrita, valor e percentual,
 /// então a cor nunca é a única pista.
 class HBarList extends StatelessWidget {
-  const HBarList({super.key, required this.items, required this.color, this.showPercent = true});
+  const HBarList({
+    super.key,
+    required this.items,
+    required this.color,
+    this.showPercent = true,
+    this.percentOf,
+  });
 
   final List<HBarItem> items;
   final Color color;
   final bool showPercent;
+
+  /// Base do percentual quando as categorias se sobrepõem (ex.: paciente em
+  /// várias linhas). Sem ela, o percentual é sobre a soma das barras.
+  final int? percentOf;
 
   @override
   Widget build(BuildContext context) {
@@ -785,7 +795,7 @@ class HBarList extends StatelessWidget {
       return const EmptyState(icon: Icons.bar_chart_rounded, text: 'Sem dados para exibir');
     }
     final maxV = items.map((i) => i.value).reduce(max);
-    final total = items.fold<int>(0, (s, i) => s + i.value);
+    final total = percentOf ?? items.fold<int>(0, (s, i) => s + i.value);
     return Column(
       children: [
         for (final item in items)

@@ -16,6 +16,13 @@ String? _str(Object? v) {
   return s.isEmpty ? null : s;
 }
 
+/// Lista gravada como texto separado por vírgulas.
+List<String> _list(Object? v) => (_str(v) ?? '')
+    .split(',')
+    .map((c) => c.trim())
+    .where((c) => c.isNotEmpty)
+    .toList();
+
 /// Base de todos os registros sincronizados: UUID, carimbo de alteração
 /// (para resolver conflitos) e exclusão lógica (para a exclusão sincronizar).
 abstract class Entity {
@@ -99,7 +106,7 @@ class Patient extends Entity {
     this.sex,
     this.phone,
     this.document,
-    this.careLineId,
+    List<String>? careLineIds,
     List<String>? cidCodes,
     this.notes,
     this.dum,
@@ -107,7 +114,8 @@ class Patient extends Entity {
     String? createdAt,
     String? updatedAt,
     String? deletedAt,
-  })  : cidCodes = cidCodes ?? [],
+  })  : careLineIds = careLineIds ?? [],
+        cidCodes = cidCodes ?? [],
         createdAt = createdAt ?? nowUtcIso(),
         super(id, updatedAt, deletedAt);
 
@@ -118,7 +126,10 @@ class Patient extends Entity {
   String? sex;
   String? phone;
   String? document;
-  String? careLineId;
+
+  /// Linhas de cuidado do paciente (pode estar em várias). A primeira dá a
+  /// cor do avatar.
+  List<String> careLineIds;
   List<String> cidCodes;
   String? notes;
 
@@ -145,7 +156,7 @@ class Patient extends Entity {
     sex = null;
     phone = null;
     document = null;
-    careLineId = null;
+    careLineIds = [];
     cidCodes = [];
     notes = null;
     dum = null;
@@ -160,7 +171,10 @@ class Patient extends Entity {
         'sex': sex,
         'phone': phone,
         'document': document,
-        'care_line_id': careLineId,
+        // Primeira linha também em care_line_id, que é o que um aparelho com
+        // versão anterior do app lê e grava.
+        'care_line_id': careLineIds.firstOrNull,
+        'care_line_ids': careLineIds.join(','),
         'cid_codes': cidCodes.join(','),
         'notes': notes,
         'dum': dum == null ? null : dateKey(dum!),
@@ -177,11 +191,8 @@ class Patient extends Entity {
         sex: _str(m['sex']),
         phone: _str(m['phone']),
         document: _str(m['document']),
-        careLineId: _str(m['care_line_id']),
-        cidCodes: (_str(m['cid_codes']) ?? '')
-            .split(',')
-            .where((c) => c.trim().isNotEmpty)
-            .toList(),
+        careLineIds: _careLineIds(m),
+        cidCodes: _list(m['cid_codes']),
         notes: _str(m['notes']),
         dum: parseDate(m['dum']),
         pregnancyEnd: parseDate(m['pregnancy_end']),
@@ -189,6 +200,18 @@ class Patient extends Entity {
         updatedAt: _str(m['updated_at']),
         deletedAt: _str(m['deleted_at']),
       );
+
+  /// Esta versão grava care_line_id igual à primeira de care_line_ids.
+  /// Se forem diferentes, o registro foi alterado por um aparelho com versão
+  /// anterior do app (só conhece care_line_id) e vale a escolha dele.
+  /// Registros anteriores à v1.3 não têm care_line_ids.
+  static List<String> _careLineIds(Map<String, Object?> m) {
+    final single = _str(m['care_line_id']);
+    if (m['care_line_ids'] == null) return [if (single != null) single];
+    final ids = _list(m['care_line_ids']);
+    if (ids.firstOrNull == single) return ids;
+    return [if (single != null) single];
+  }
 }
 
 class ApptStatus {
@@ -288,6 +311,7 @@ class Prescription extends Entity {
     required this.expiresAt,
     this.resolved = false,
     this.notes,
+    this.groupId,
     String? updatedAt,
     String? deletedAt,
   }) : super(id, updatedAt, deletedAt);
@@ -303,6 +327,12 @@ class Prescription extends Entity {
   /// Receita já renovada ou encerrada: não gera mais lembrete.
   bool resolved;
   String? notes;
+
+  /// Receituário a que pertence: medicamentos emitidos juntos compartilham
+  /// data e observações, mas cada um tem a própria validade. Receitas
+  /// anteriores à v1.3 não têm: cada uma é um receituário.
+  String? groupId;
+  String get groupKey => groupId ?? id;
 
   bool get isExpired => expiresAt.isBefore(today());
 
@@ -326,6 +356,7 @@ class Prescription extends Entity {
         'expires_at': dateKey(expiresAt),
         'resolved': resolved ? 1 : 0,
         'notes': notes,
+        'group_id': groupId,
         'updated_at': updatedAt,
         'deleted_at': deletedAt,
       };
@@ -339,6 +370,7 @@ class Prescription extends Entity {
         expiresAt: parseDate(m['expires_at']) ?? today(),
         resolved: _bool(m['resolved']),
         notes: _str(m['notes']),
+        groupId: _str(m['group_id']),
         updatedAt: _str(m['updated_at']),
         deletedAt: _str(m['deleted_at']),
       );
@@ -417,21 +449,28 @@ enum ReminderKind {
 }
 
 /// Lembrete derivado dos dados (não é armazenado): retorno previsto,
-/// receita vencendo ou exame a repetir.
+/// receita vencendo ou exame a repetir. Medicamentos do mesmo paciente que
+/// vencem no mesmo dia formam um lembrete só (uma notificação).
 class Reminder {
   Reminder({
     required this.kind,
     required this.patient,
     required this.due,
     required this.title,
-    required this.source,
-  });
+    required this.sources,
+  }) : assert(sources.isNotEmpty);
 
   final ReminderKind kind;
   final Patient patient;
   final DateTime due;
   final String title;
-  final Entity source;
+
+  /// Registros de origem (vários quando são medicamentos vencendo juntos).
+  final List<Entity> sources;
+  Entity get source => sources.first;
+
+  /// "Receita" ou "Receitas (3)".
+  String get label => sources.length == 1 ? kind.label : '${kind.label}s (${sources.length})';
 
   bool get overdue => due.isBefore(today());
   int get daysLeft => daysBetween(today(), due);

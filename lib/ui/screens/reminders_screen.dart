@@ -194,7 +194,7 @@ class _ReminderCard extends StatelessWidget {
                       Row(
                         children: [
                           StatusBadge(
-                            text: r.kind.label,
+                            text: r.label,
                             color: AppColors.surface,
                           ),
                           const SizedBox(width: 6),
