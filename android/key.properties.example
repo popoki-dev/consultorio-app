@@ -1,0 +1,7 @@
+# Copie para key.properties (fora do git) e preencha.
+# Guarde o .jks FORA do projeto e faça backup dele: sem ele, o app
+# instalado no cliente não pode mais ser atualizado.
+storeFile=/home/hades/keys/consultorio-release.jks
+storePassword=
+keyAlias=consultorio
+keyPassword=

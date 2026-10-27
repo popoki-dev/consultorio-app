@@ -34,21 +34,24 @@ lib/
   services/                  sync, notifications, biometric lock, settings, export, demo data
   ui/widgets.dart            design-system components (AccentPage, WeekStrip, PillBarChart…)
   ui/screens/                agenda, patients, patient detail, forms, reminders, dashboard, settings
+android/                     Android project (desugaring, minSdk 23, release signing)
 supabase/schema.sql          server tables, triggers, RLS
-setup.ps1                    generates android/ios folders and applies native tweaks
+setup.ps1                    Windows: generates the ios folder and applies its Face ID text
 ```
 
 ## Setup
 
-> **Move the project out of OneDrive and out of any path with non-ASCII characters**
-> (e.g. `C:\dev\consultorio`). The current path contains `Документи`, and Android
-> Gradle fails on Windows with non-ASCII project paths. OneDrive file locking also
-> breaks builds.
+> **Windows:** keep the project out of OneDrive and out of any path with non-ASCII
+> characters (e.g. `C:\dev\consultorio`). Android Gradle fails on Windows with
+> non-ASCII project paths, and OneDrive file locking breaks builds.
 
-1. Install Flutter (stable, 3.24 or newer) and Android Studio. Then run `flutter doctor`.
+1. Install Flutter 3.47 or newer (`pubspec.lock` was resolved with 3.47.7), JDK 17
+   and the Android SDK (platform 36, build-tools 36, NDK 28.2.13676358). Then run
+   `flutter doctor`; the Android toolchain must show ✓.
 2. In the project folder, run:
-   ```powershell
-   powershell -ExecutionPolicy Bypass -File .\setup.ps1
+   ```bash
+   flutter pub get --enforce-lockfile
+   flutter test
    flutter run
    ```
 3. In the app, open **Ajustes → Carregar dados de demonstração** to load 63
@@ -98,8 +101,20 @@ touches nothing.
 
 ### Release builds
 
-- Android: `flutter build appbundle --dart-define=...`. Set up signing in
-  `android/app/build.gradle.kts` first.
+- Android: release builds are signed with the key in `android/key.properties`
+  (not in git). Without it, a release build fails on purpose: an APK signed with
+  the debug key cannot be updated by one signed with the release key, and
+  uninstalling deletes the local database.
+  1. Create the key once and **back up the `.jks` and its passwords**. Without
+     them, the app installed on the client's phone can never be updated.
+     ```bash
+     keytool -genkey -v -keystore ~/keys/consultorio-release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias consultorio
+     ```
+  2. `cp android/key.properties.example android/key.properties` and fill it in.
+  3. `flutter build apk --release --dart-define=...` (or `appbundle` for Play).
+
+  For a local test only, `CONSULTORIO_DEBUG_SIGNING=1 flutter build apk --release`
+  signs with the debug key.
 - iOS: needs a Mac with Xcode and an Apple Developer account (US$ 99/year).
 
 ## Notes
@@ -108,8 +123,7 @@ touches nothing.
   they fire without internet. They are rescheduled whenever data changes. iOS
   limits pending notifications to 64, so the app schedules the nearest 60.
   Tapping a notification opens the **Lembretes** tab.
-- `setup.ps1` sets `kotlin.jvm.target.validation.mode=warning` in
-  `android/gradle.properties`: older plugins (`file_picker`, `share_plus`) compile
+- `android/gradle.properties` sets `kotlin.jvm.target.validation.mode=warning`: older plugins (`file_picker`, `share_plus`) compile
   Kotlin for JVM 1.8, which otherwise fails the build on AGP 9.
 - `file_picker` is pinned to 10.x: 11.x assumes AGP 9 built-in Kotlin, which the
   Flutter template turns off (`android.builtInKotlin=false`).
