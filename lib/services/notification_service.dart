@@ -98,9 +98,10 @@ class NotificationService {
       var id = 1;
       for (final (at, r, isDueDay) in items.take(_maxPending)) {
         final who = showNames ? r.patient.name : 'paciente ${initials(r.patient.name)}';
+        final vence = r.sources.length == 1 ? 'vence' : 'vencem';
         final title = isDueDay
-            ? '${r.kind.label} vence hoje · $who'
-            : '${r.kind.label} vence em ${daysBetween(at, r.due)} dias · $who';
+            ? '${r.label} $vence hoje · $who'
+            : '${r.label} $vence em ${daysBetween(at, r.due)} dias · $who';
         final what = showNames ? '${r.title} — ' : '';
         final body = '$what${fmtDate(r.due)}. Toque para ver os lembretes.';
         await _plugin.zonedSchedule(

@@ -41,7 +41,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
         body: const EmptyState(icon: Icons.person_off_outlined, text: 'Paciente não encontrado.'),
       );
     }
-    final line = data.careLine(p.careLineId);
+    final lines = data.careLinesOf(p);
     final List<Widget> content = switch (_tab) {
       _Tab.summary => _summary(context, data, p),
       _Tab.prescriptions => _prescriptions(context, data, p),
@@ -67,7 +67,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 18),
         child: Row(
           children: [
-            Avatar(name: p.name, color: line?.colorValue ?? AppColors.salmonSoft, size: 58),
+            Avatar(name: p.name, color: lines.firstOrNull?.colorValue ?? AppColors.salmonSoft, size: 58),
             const SizedBox(width: 14),
             Expanded(
               child: Column(
@@ -79,13 +79,13 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
                     '${ageLabel(p.birthDate)} · ${Sex.label(p.sex)}',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  if (line != null || p.pregnant) ...[
+                  if (lines.isNotEmpty || p.pregnant) ...[
                     const SizedBox(height: 6),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
                       children: [
-                        if (line != null) StatusBadge(text: line.name, color: AppColors.surface),
+                        for (final line in lines) StatusBadge(text: line.name, color: AppColors.surface),
                         if (p.pregnant)
                           StatusBadge(
                             text: 'Gestante · ${gestationalAge(p.dum!, today()).short}',
@@ -131,7 +131,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
             MaterialPageRoute(builder: (_) => PrescriptionFormScreen(patientId: p.id)),
           ),
           icon: const Icon(Icons.add_rounded),
-          label: const Text('Receita', style: TextStyle(fontWeight: FontWeight.w800)),
+          label: const Text('Receituário', style: TextStyle(fontWeight: FontWeight.w800)),
         ),
       _Tab.exams => FloatingActionButton.extended(
           heroTag: 'fab-exam',
@@ -199,7 +199,7 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
           Expanded(
             child: StatTile(
               value: '$activeRx',
-              label: 'Receitas válidas',
+              label: 'Medicamentos válidos',
               icon: Icons.medication_outlined,
               iconColor: AppColors.purpleSoft,
               onTap: () => setState(() => _tab = _Tab.prescriptions),
@@ -306,46 +306,78 @@ class _PatientDetailScreenState extends State<PatientDetailScreen> {
   // --------------------------------------------------------------- receitas
 
   List<Widget> _prescriptions(BuildContext context, AppData data, Patient p) {
-    final list = data.prescriptionsOf(p.id);
-    if (list.isEmpty) {
+    final groups = data.receituariosOf(p.id);
+    if (groups.isEmpty) {
       return const [EmptyState(icon: Icons.medication_outlined, text: 'Nenhuma receita registrada.')];
     }
     return [
-      for (final r in list)
+      for (final group in groups)
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: OutlinedCard(
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => PrescriptionFormScreen(patientId: p.id, existing: r)),
+              MaterialPageRoute(builder: (_) => PrescriptionFormScreen(patientId: p.id, existing: group)),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    color: AppColors.salmonSoft,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.ink, width: 1.3),
-                  ),
-                  child: const Icon(Icons.medication_outlined, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(r.medication, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
-                      if (r.dosage != null) Text(r.dosage!, style: const TextStyle(fontSize: 13)),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Emitida ${fmtDate(r.issuedAt)} · válida até ${fmtDate(r.expiresAt)}',
-                        style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: AppColors.salmonSoft,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.ink, width: 1.3),
                       ),
+                      child: const Icon(Icons.medication_outlined, size: 20),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Receituário de ${fmtDate(group.first.issuedAt)}',
+                            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                          ),
+                          Text(
+                            plural(group.length, 'medicamento', 'medicamentos'),
+                            style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right_rounded),
+                  ],
+                ),
+                for (final r in group) ...[
+                  const Divider(height: 18, color: AppColors.hairline),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(r.medication, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                            if (r.dosage != null) Text(r.dosage!, style: const TextStyle(fontSize: 13)),
+                            Text(
+                              'Válida até ${fmtDate(r.expiresAt)}',
+                              style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      prescriptionBadge(r),
                     ],
                   ),
-                ),
-                prescriptionBadge(r),
+                ],
+                if ((group.first.notes ?? '').isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  Text(group.first.notes!, style: const TextStyle(fontSize: 12)),
+                ],
               ],
             ),
           ),
@@ -600,7 +632,7 @@ Future<void> _endPregnancy(BuildContext context, Patient p) async {
         initialName: 'RN de ${p.name}',
         initialBirth: date,
         initialPhone: p.phone,
-        initialCareLine: data.careLine(AppData.infantLineId) == null ? null : AppData.infantLineId,
+        initialCareLines: [if (data.careLine(AppData.infantLineId) != null) AppData.infantLineId],
       ),
     ),
   );

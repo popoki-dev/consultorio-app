@@ -61,6 +61,10 @@ create table if not exists public.patients (
 alter table public.patients add column if not exists dum text;
 alter table public.patients add column if not exists pregnancy_end text;
 
+-- v1.3: paciente em várias linhas de cuidado (care_line_id continua com a
+-- primeira, para aparelhos com versão anterior do app).
+alter table public.patients add column if not exists care_line_ids text;
+
 create table if not exists public.appointments (
   id text primary key,
   owner_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -90,6 +94,9 @@ create table if not exists public.prescriptions (
   deleted_at text,
   server_updated_at timestamptz not null default clock_timestamp()
 );
+
+-- v1.3: receituário com vários medicamentos.
+alter table public.prescriptions add column if not exists group_id text;
 
 create table if not exists public.exams (
   id text primary key,

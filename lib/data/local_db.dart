@@ -133,9 +133,11 @@ class LocalDb {
     for (final t in syncedTables) (t, 'base_updated_at'), // v2
     ('patients', 'dum'), // v3: gestação
     ('patients', 'pregnancy_end'), // v3
+    ('patients', 'care_line_ids'), // v4: várias linhas de cuidado
+    ('prescriptions', 'group_id'), // v4: receituário com vários medicamentos
   ];
 
-  static const _version = 3;
+  static const _version = 4;
 
   Future<Database> _openWith(String path, String key) => openDatabase(
         path,

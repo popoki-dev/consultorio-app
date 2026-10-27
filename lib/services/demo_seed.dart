@@ -33,6 +33,13 @@ const _cidByLine = {
   'cl-saude-idoso': ['I10', 'M81', 'M17', 'G30', 'N18', 'E11'],
 };
 
+/// Segunda linha frequente (ex.: hipertenso que também é diabético).
+const _secondLine = {
+  'cl-hipertensao': 'cl-diabetes',
+  'cl-diabetes': 'cl-hipertensao',
+  'cl-saude-idoso': 'cl-hipertensao',
+};
+
 const _rxByLine = {
   'cl-hipertensao': [('Losartana', '50 mg 12/12h'), ('Hidroclorotiazida', '25 mg 1x/dia'), ('Anlodipino', '5 mg 1x/dia')],
   'cl-diabetes': [('Metformina', '850 mg 2x/dia'), ('Glicazida', '30 mg 1x/dia'), ('Insulina NPH', '20 UI à noite')],
@@ -75,6 +82,9 @@ Future<void> seedDemoData(AppData data, {int patients = 48}) async {
     final birth = DateTime(now.year - age, 1 + rnd.nextInt(12), 1 + rnd.nextInt(28));
     final cids = {pick(_cidByLine[line.id] ?? ['Z00'])};
     if (rnd.nextDouble() < 0.35) cids.add(pick(_cidByLine[line.id] ?? ['Z00']));
+    final second = data.careLine(_secondLine[line.id]);
+    final lineIds = [line.id, if (second != null && rnd.nextDouble() < 0.4) second.id];
+    if (lineIds.length > 1) cids.add(pick(_cidByLine[second!.id]!));
 
     final patient = Patient(
       id: newId(),
@@ -82,7 +92,7 @@ Future<void> seedDemoData(AppData data, {int patients = 48}) async {
       birthDate: birth,
       sex: female ? Sex.female : Sex.male,
       phone: '(11) 9${1000 + rnd.nextInt(8999)}-${1000 + rnd.nextInt(8999)}',
-      careLineId: line.id,
+      careLineIds: lineIds,
       cidCodes: cids.toList(),
       notes: '$demoTag Paciente fictício para demonstração.',
     );
@@ -118,21 +128,24 @@ Future<void> seedDemoData(AppData data, {int patients = 48}) async {
       ));
     }
 
-    // Receitas.
-    final meds = _rxByLine[line.id] ?? const [];
+    // Um receituário com os medicamentos das linhas do paciente; quase
+    // sempre com a mesma validade (um lembrete só).
+    final meds = [
+      for (final id in lineIds) ..._rotated(_rxByLine[id] ?? const [], i).take(1 + rnd.nextInt(2)),
+    ];
     if (meds.isNotEmpty) {
-      final count = 1 + rnd.nextInt(2);
-      for (var r = 0; r < count; r++) {
-        final (med, dose) = meds[(r + i) % meds.length];
-        final issued = dateOnly(lastDone ?? addDays(now, -30));
-        final validity = pick([30, 60, 90, 180]);
+      final groupId = newId();
+      final issued = dateOnly(lastDone ?? addDays(now, -30));
+      final validity = pick([30, 60, 90, 180]);
+      for (final (med, dose) in meds) {
         rList.add(Prescription(
           id: newId(),
           patientId: patient.id,
           medication: med,
           dosage: dose,
           issuedAt: issued,
-          expiresAt: addDays(issued, validity),
+          expiresAt: addDays(issued, rnd.nextDouble() < 0.2 ? pick([30, 60, 90, 180]) : validity),
+          groupId: groupId,
         ));
       }
     }
@@ -167,6 +180,10 @@ Future<void> seedDemoData(AppData data, {int patients = 48}) async {
   });
 }
 
+/// A lista começando no item [by] (varia os medicamentos entre pacientes).
+List<T> _rotated<T>(List<T> l, int by) =>
+    l.isEmpty ? l : [...l.skip(by % l.length), ...l.take(by % l.length)];
+
 /// Nome e dois sobrenomes diferentes.
 String _fullName(Random rnd, String first) {
   final a = rnd.nextInt(_surnames.length);
@@ -199,7 +216,7 @@ void _seedPregnancies(
       birthDate: DateTime(now.year - age, 1 + rnd.nextInt(12), 1 + rnd.nextInt(28)),
       sex: Sex.female,
       phone: '(11) 9${1000 + rnd.nextInt(8999)}-${1000 + rnd.nextInt(8999)}',
-      careLineId: line?.id,
+      careLineIds: [if (line != null) line.id],
       cidCodes: ['Z34', if (rnd.nextDouble() < 0.25) 'D50'],
       notes: '$demoTag Gestante fictícia para demonstração.',
       dum: dum,
@@ -223,7 +240,7 @@ void _seedPregnancies(
       day = addDays(d, PrenatalPhase.of(gestationalAge(dum, d)).intervalDays);
     }
     if (lastDone != null) {
-      lastDone.returnDue = suggestReturn(p, line, lastDone.startAt)?.date;
+      lastDone.returnDue = suggestReturn(p, [if (line != null) line], lastDone.startAt)?.date;
       if (rnd.nextDouble() < 0.5 && lastDone.returnDue != null && lastDone.returnDue!.isAfter(now)) {
         aList.add(Appointment(id: newId(), patientId: p.id, startAt: _at(_weekday(lastDone.returnDue!), rnd)));
       }
@@ -231,6 +248,7 @@ void _seedPregnancies(
 
     final start = addDays(dum, 8 * 7);
     if (start.isBefore(now)) {
+      final groupId = newId();
       for (final (med, dose, days) in const [
         ('Sulfato ferroso', '40 mg 1x/dia', 180),
         ('Ácido fólico', '5 mg 1x/dia', 90),
@@ -242,6 +260,7 @@ void _seedPregnancies(
           dosage: dose,
           issuedAt: start,
           expiresAt: addDays(start, days),
+          groupId: groupId,
         ));
       }
       eList
@@ -287,7 +306,7 @@ void _seedInfants(
       birthDate: birth,
       sex: male ? Sex.male : Sex.female,
       phone: '(11) 9${1000 + rnd.nextInt(8999)}-${1000 + rnd.nextInt(8999)}',
-      careLineId: line?.id,
+      careLineIds: [if (line != null) line.id],
       cidCodes: ['Z00', if (rnd.nextDouble() < 0.2) pick(const ['J45', 'D50'])],
       notes: '$demoTag Criança fictícia para demonstração.',
     );
@@ -303,10 +322,11 @@ void _seedInfants(
       aList.add(a);
       lastDone = a;
     }
-    if (lastDone != null) lastDone.returnDue = suggestReturn(p, line, lastDone.startAt)?.date;
+    if (lastDone != null) lastDone.returnDue = suggestReturn(p, [if (line != null) line], lastDone.startAt)?.date;
 
     // Receitas renovadas na última consulta.
     final issued = dateOnly(lastDone?.startAt ?? addDays(birth, 7));
+    final groupId = newId();
     rList.add(Prescription(
       id: newId(),
       patientId: p.id,
@@ -314,6 +334,7 @@ void _seedInfants(
       dosage: '400 UI 1x/dia',
       issuedAt: issued,
       expiresAt: addDays(issued, 180),
+      groupId: groupId,
     ));
     if (months >= 6) {
       rList.add(Prescription(
@@ -323,6 +344,7 @@ void _seedInfants(
         dosage: '1 mg/kg/dia',
         issuedAt: issued,
         expiresAt: addDays(issued, 180),
+        groupId: groupId,
       ));
     }
     eList.add(Exam(

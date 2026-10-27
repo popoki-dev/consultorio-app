@@ -1,8 +1,10 @@
 import 'dart:convert';
 
+import 'package:consultorio/core/format.dart';
 import 'package:consultorio/data/app_data.dart';
 import 'package:consultorio/data/local_db.dart';
 import 'package:consultorio/data/models.dart';
+import 'package:consultorio/services/demo_seed.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -105,13 +107,15 @@ void main() {
     await data.savePatient(patient);
     await data.saveAppointment(
         Appointment(id: 'a1', patientId: 'p1', startAt: DateTime(2026, 10, 5, 9)));
-    await data.savePrescription(Prescription(
-      id: 'r1',
-      patientId: 'p1',
-      medication: 'Sertralina',
-      issuedAt: DateTime(2026, 10, 1),
-      expiresAt: DateTime(2026, 11, 1),
-    ));
+    await data.saveReceituario([
+      Prescription(
+        id: 'r1',
+        patientId: 'p1',
+        medication: 'Sertralina',
+        issuedAt: DateTime(2026, 10, 1),
+        expiresAt: DateTime(2026, 11, 1),
+      ),
+    ]);
     await db.addConflict('patients', 'p1', _patient('p1', 'Maria (outro aparelho)', t1));
 
     await data.delete(data.patient('p1')!);
@@ -127,5 +131,90 @@ void main() {
     expect(await db.conflictCount(), 0);
     expect(data.patients, isEmpty);
     expect(data.appointments, isEmpty);
+  });
+
+  group('receituário', () {
+    late AppData data;
+    setUp(() async {
+      data = AppData(db);
+      await data.savePatient(Patient(id: 'p1', name: 'Ana'));
+    });
+
+    Prescription rx(String id, String med, DateTime issued, {String? group}) => Prescription(
+          id: id,
+          patientId: 'p1',
+          medication: med,
+          issuedAt: issued,
+          expiresAt: addDays(issued, 30),
+          groupId: group,
+        );
+
+    test('grava os medicamentos juntos e encerra a receita anterior do mesmo medicamento', () async {
+      await data.saveReceituario([rx('old', 'Metformina', DateTime(2026, 8, 1))]);
+      await data.saveReceituario([
+        rx('m', 'metformina ', DateTime(2026, 10, 1), group: 'g'),
+        rx('l', 'Losartana', DateTime(2026, 10, 1), group: 'g'),
+      ]);
+
+      expect(data.receituariosOf('p1').first.map((r) => r.id), ['l', 'm']);
+      expect(data.prescriptions.firstWhere((r) => r.id == 'old').resolved, isTrue);
+      expect((await db.byId('prescriptions', 'm'))!['group_id'], 'g');
+      expect(data.reminders.single.sources.map((s) => s.id), ['l', 'm'],
+          reason: 'mesma validade: um lembrete só');
+    });
+
+    test('medicamento tirado na edição é excluído sem dados', () async {
+      await data.saveReceituario([
+        rx('m', 'Metformina', DateTime(2026, 10, 1), group: 'g'),
+        rx('l', 'Losartana', DateTime(2026, 10, 1), group: 'g'),
+      ]);
+      final group = data.receituariosOf('p1').single;
+      await data.saveReceituario(
+        [group.firstWhere((r) => r.id == 'm')],
+        removed: [group.firstWhere((r) => r.id == 'l')],
+      );
+
+      expect(data.prescriptions.map((r) => r.id), ['m']);
+      final removed = (await db.byId('prescriptions', 'l'))!;
+      expect(removed['deleted_at'], isNotNull);
+      expect(removed['medication'], '');
+    });
+
+    test('resolver o lembrete resolve todos os medicamentos dele', () async {
+      await data.saveReceituario([
+        rx('m', 'Metformina', DateTime(2026, 10, 1), group: 'g'),
+        rx('l', 'Losartana', DateTime(2026, 10, 1), group: 'g'),
+      ]);
+      await data.setReminderResolved(data.reminders.single, true);
+
+      expect(data.reminders, isEmpty);
+      for (final id in ['m', 'l']) {
+        expect((await db.byId('prescriptions', id))!['resolved'], 1);
+      }
+    });
+  });
+
+  test('paciente com várias linhas de cuidado é gravado e lido do banco', () async {
+    final data = AppData(db);
+    await data.savePatient(Patient(id: 'p1', name: 'Ana', careLineIds: ['cl-diabetes', 'cl-hipertensao']));
+    expect((await db.byId('patients', 'p1'))!['care_line_ids'], 'cl-diabetes,cl-hipertensao');
+    await data.load();
+    expect(data.patient('p1')!.careLineIds, ['cl-diabetes', 'cl-hipertensao']);
+  });
+
+  test('dados de demonstração: pacientes em várias linhas e receituários', () async {
+    final data = AppData(db);
+    await data.ensureDefaults();
+    await data.load();
+    await seedDemoData(data);
+
+    expect(data.patients, hasLength(greaterThan(50)));
+    expect(data.patients.where((p) => p.careLineIds.length > 1), isNotEmpty);
+    final groups = data.patients.expand((p) => data.receituariosOf(p.id)).toList();
+    expect(groups.where((g) => g.length > 1), isNotEmpty);
+    expect(data.reminders.where((r) => r.sources.length > 1), isNotEmpty);
+
+    await removeDemoData(data);
+    expect(data.patients, isEmpty);
   });
 }

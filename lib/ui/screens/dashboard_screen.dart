@@ -115,7 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case _Group.all:
         break;
     }
-    if (_line != null && p.careLineId != _line) return false;
+    if (_line != null && !p.careLineIds.contains(_line)) return false;
     if (_sex != null && p.sex != _sex) return false;
     if (_agesFiltered) {
       final age = p.age;
@@ -412,7 +412,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final n = patients.length;
     final pct = total == 0 ? 0 : (n * 100 / total).round();
     final criteria = _criteria(data);
-    final slices = _compositionSlices(data, patients);
+    final slices = _composition == _Composition.line ? const <DonutSlice>[] : _compositionSlices(data, patients);
 
     return OutlinedCard(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
@@ -477,15 +477,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
               onChanged: (c) => setState(() => _composition = c),
             ),
             const SizedBox(height: 14),
-            Center(
-              child: DonutChart(
-                slices: slices,
-                centerValue: '$n',
-                centerLabel: n == 1 ? 'paciente' : 'pacientes',
+            if (_composition == _Composition.line) ...[
+              HBarList(color: AppColors.blue, percentOf: n, items: _lineBars(data, patients)),
+              const SizedBox(height: 4),
+              const Text(
+                'Um paciente pode estar em mais de uma linha: os percentuais são sobre o total '
+                'do grupo e podem somar mais de 100%.',
+                style: TextStyle(fontSize: 12, color: AppColors.muted),
               ),
-            ),
-            const SizedBox(height: 10),
-            DonutLegend(slices: slices),
+            ] else ...[
+              Center(
+                child: DonutChart(
+                  slices: slices,
+                  centerValue: '$n',
+                  centerLabel: n == 1 ? 'paciente' : 'pacientes',
+                ),
+              ),
+              const SizedBox(height: 10),
+              DonutLegend(slices: slices),
+            ],
             const SizedBox(height: 12),
             OutlinedButton.icon(
               icon: const Icon(Icons.list_alt_rounded),
@@ -506,15 +516,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  /// Pacientes por linha de cuidado (um paciente conta em cada linha dele).
+  List<HBarItem> _lineBars(AppData data, List<Patient> patients) {
+    final bars = [
+      for (final c in data.careLines)
+        HBarItem(c.name, patients.where((p) => p.careLineIds.contains(c.id)).length, color: c.colorValue),
+    ]
+      ..removeWhere((b) => b.value == 0)
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final multi = patients.where((p) => data.careLinesOf(p).length > 1).length;
+    final none = patients.where((p) => data.careLinesOf(p).isEmpty).length;
+    return [
+      ...bars,
+      if (none > 0) HBarItem('Sem linha de cuidado', none, color: AppColors.hairline),
+      if (multi > 0) HBarItem('Em mais de uma linha', multi, color: AppColors.blueSoft),
+    ];
+  }
+
   List<DonutSlice> _compositionSlices(AppData data, List<Patient> patients) {
     switch (_composition) {
       case _Composition.line:
-        final slices = [
-          for (final c in data.careLines)
-            DonutSlice(c.name, patients.where((p) => p.careLineId == c.id).length, c.colorValue),
-        ]..sort((a, b) => b.value.compareTo(a.value));
-        final none = patients.where((p) => data.careLine(p.careLineId) == null).length;
-        return [...slices, DonutSlice('Sem linha de cuidado', none, AppColors.hairline)];
+        return const [];
       case _Composition.sex:
         return [
           DonutSlice('Feminino', patients.where((p) => p.sex == Sex.female).length, const Color(0xFFE79BC0)),

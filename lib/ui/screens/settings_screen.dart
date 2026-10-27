@@ -205,7 +205,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           const Center(
-            child: Text('Consultório · versão 1.2.0', style: TextStyle(color: AppColors.muted, fontSize: 12)),
+            child: Text('Consultório · versão 1.3.0', style: TextStyle(color: AppColors.muted, fontSize: 12)),
           ),
         ],
       ),

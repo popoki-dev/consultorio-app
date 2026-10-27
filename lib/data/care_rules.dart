@@ -143,9 +143,9 @@ class ReturnSuggestion {
 }
 
 /// Sugestão de retorno ao concluir uma consulta em [visitDay]: gestação e
-/// puericultura têm calendário próprio; os demais seguem o intervalo da
-/// linha de cuidado.
-ReturnSuggestion? suggestReturn(Patient p, CareLine? line, DateTime visitDay) {
+/// puericultura têm calendário próprio; os demais seguem o intervalo das
+/// linhas de cuidado do paciente (o menor, se forem várias).
+ReturnSuggestion? suggestReturn(Patient p, Iterable<CareLine> lines, DateTime visitDay) {
   final day = dateOnly(visitDay);
   if (p.dum != null && pregnantOn(p, day)) {
     final ga = gestationalAge(p.dum!, day);
@@ -178,9 +178,16 @@ ReturnSuggestion? suggestReturn(Patient p, CareLine? line, DateTime visitDay) {
       );
     }
   }
-  final days = line?.defaultReturnDays;
-  if (line != null && days != null) {
-    return ReturnSuggestion(addDays(day, days), '${line.name}: retorno a cada $days dias.');
-  }
-  return null;
+  final timed = lines.where((l) => l.defaultReturnDays != null).toList()
+    ..sort((a, b) => a.defaultReturnDays!.compareTo(b.defaultReturnDays!));
+  if (timed.isEmpty) return null;
+  final line = timed.first;
+  final days = line.defaultReturnDays!;
+  return ReturnSuggestion(
+    addDays(day, days),
+    timed.length == 1
+        ? '${line.name}: retorno a cada $days dias.'
+        : '${line.name}: retorno a cada $days dias (o menor intervalo entre as '
+            'linhas do paciente).',
+  );
 }

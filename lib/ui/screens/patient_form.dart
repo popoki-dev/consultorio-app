@@ -19,7 +19,7 @@ class PatientFormScreen extends StatefulWidget {
     this.existing,
     this.initialName,
     this.initialBirth,
-    this.initialCareLine,
+    this.initialCareLines = const [],
     this.initialPhone,
   });
 
@@ -28,7 +28,7 @@ class PatientFormScreen extends StatefulWidget {
 
   /// Usados ao cadastrar o recém-nascido a partir da ficha da mãe.
   final DateTime? initialBirth;
-  final String? initialCareLine;
+  final List<String> initialCareLines;
   final String? initialPhone;
 
   @override
@@ -46,7 +46,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
   final _gaDays = TextEditingController();
   DateTime? _birth;
   String? _sex;
-  String? _careLine;
+  List<String> _careLines = [];
   List<String> _cids = [];
   bool _saving = false;
 
@@ -66,7 +66,8 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       _notes.text = p.notes ?? '';
       _birth = p.birthDate;
       _sex = p.sex;
-      _careLine = p.careLineId;
+      // Linhas excluídas somem da escolha.
+      _careLines = p.careLineIds.where((id) => context.read<AppData>().careLine(id) != null).toList();
       _cids = [...p.cidCodes];
       _pregnant = p.pregnant;
       if (p.pregnant) _dum = p.dum;
@@ -74,7 +75,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       _name.text = widget.initialName ?? '';
       _phone.text = widget.initialPhone ?? '';
       _birth = widget.initialBirth;
-      _careLine = widget.initialCareLine;
+      _careLines = [...widget.initialCareLines];
     }
   }
 
@@ -133,14 +134,17 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
     final data = context.read<AppData>();
     String? opt(TextEditingController c) => c.text.trim().isEmpty ? null : c.text.trim();
     final p = widget.existing ?? Patient(id: newId(), name: '');
-    var careLine = _careLine;
+    final careLines = [..._careLines];
     if (_pregnant) {
+      // Gestação nova entra no pré-natal; numa edição, vale o que está marcado.
+      if (!p.pregnant &&
+          data.careLine(AppData.prenatalLineId) != null &&
+          !careLines.contains(AppData.prenatalLineId)) {
+        careLines.add(AppData.prenatalLineId);
+      }
       p
         ..dum = _effectiveDum
         ..pregnancyEnd = null;
-      if (careLine == null && data.careLine(AppData.prenatalLineId) != null) {
-        careLine = AppData.prenatalLineId;
-      }
     } else if (p.pregnant) {
       // Desmarcado: a gestação foi registrada por engano. (Para parto ou
       // encerramento há o botão na ficha, que mantém o histórico.)
@@ -152,7 +156,7 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
       ..sex = _sex
       ..phone = opt(_phone)
       ..document = opt(_document)
-      ..careLineId = careLine
+      ..careLineIds = careLines
       ..cidCodes = _cids
       ..notes = opt(_notes);
     final ok = await saveGuarded(context, () => data.savePatient(p));
@@ -241,24 +245,33 @@ class _PatientFormScreenState extends State<PatientFormScreen> {
               decoration: const InputDecoration(labelText: 'CPF ou Cartão SUS (opcional)', prefixIcon: Icon(Icons.badge_outlined)),
             ),
             const SizedBox(height: 18),
-            const _Label('Linha de cuidado'),
+            const _Label('Linhas de cuidado'),
             Wrap(
               spacing: 8,
               runSpacing: 8,
               children: [
                 PillChip(
                   label: 'Nenhuma',
-                  selected: _careLine == null,
-                  onTap: () => setState(() => _careLine = null),
+                  selected: _careLines.isEmpty,
+                  onTap: () => setState(() => _careLines = []),
                 ),
                 for (final c in data.careLines)
                   PillChip(
                     label: c.name,
                     dotColor: c.colorValue,
-                    selected: _careLine == c.id,
-                    onTap: () => setState(() => _careLine = c.id),
+                    selected: _careLines.contains(c.id),
+                    onTap: () => setState(() {
+                      if (!_careLines.remove(c.id)) _careLines.add(c.id);
+                    }),
                   ),
               ],
+            ),
+            const Padding(
+              padding: EdgeInsets.only(left: 2, top: 6),
+              child: Text(
+                'Marque todas as linhas em que o paciente é acompanhado.',
+                style: TextStyle(color: AppColors.muted, fontSize: 12),
+              ),
             ),
             const SizedBox(height: 18),
             const _Label('Diagnósticos (CID-10)'),

@@ -10,10 +10,11 @@ headers, cards with dark outlines, and a yellow bottom bar.
 |---|---|
 | Full agenda control | **Agenda** tab: week strip, day list, book/edit/reschedule, mark as done/missed/cancelled, conflict warning, swipe left/right to change day |
 | Return forecast | When an appointment is marked done, the app asks for the return date (defaults to the care line's interval) |
-| Prescription expiry | Patient → Receitas: validity shortcuts (30/60/90/180 days…); a new prescription for the same drug closes the old one |
+| Prescription expiry | Patient → Receitas: one **receituário** holds several medications, each with its own dosage and validity (shortcut to set all at once: 30/60/90/180 days…). Medications of the same patient that expire on the same day make **one** reminder and one notification. A new prescription for the same drug closes the old one |
 | Last appointment date | Shown on every patient card and in the patient summary |
 | Exam results (text) | Patient → Exames: free-text result, previous results of the same exam, optional "repeat on" date |
 | Notifications when dates expire | Local notifications N days before (configurable) and on the due date at 08:00. They work offline and with the app closed. The **Lembretes** tab lists overdue and upcoming items with "Agendar" and "Resolvido" buttons |
+| Care lines | A patient can be in **several** care lines (e.g. Hipertensão + Diabetes). The return suggestion uses the shortest interval among them; the Painel counts the patient in each line |
 | Care-line epidemiology charts | **Painel** tab: search patients by group (gestantes, crianças < 2 anos), care line, age (shortcuts + range slider), sex and CID-10 (code or disease name) → result donut (% of all patients), group composition by line/sex/age, "Ver pacientes" list, indicators (mean age, gestantes, crianças < 2, visits in 30 days, no-show rate), visits per week/month, top CID-10, pending items |
 | Prenatal care (pré-natal) | Patient form → **Gestante**: enter the DUM or the gestational age measured on a date (ultrasound). Patient page shows gestational age, trimester, DPP (DUM + 280 days), progress to 40 weeks and the visit schedule (monthly until 28 weeks, every 2 weeks until 36, weekly after). **Registrar parto / encerrar** closes the pregnancy and offers to register the newborn |
 | Child follow-up (puericultura) | Children under 2: age in months and days, next monthly visit and a 1–24 month grid (done / missed / upcoming) |
@@ -84,7 +85,10 @@ keeping patient data. Sync runs 3 s after each change, every 5 minutes, and when
 the app returns to the foreground.
 
 > **Upgrading an existing Supabase project:** run `supabase/schema.sql` again. It
-> is idempotent and adds the `keep_newest` trigger.
+> is idempotent: it adds the `keep_newest` trigger and the v1.3 columns
+> (`patients.care_line_ids`, `prescriptions.group_id`). Update the app on both
+> devices: an older version only sees each patient's first care line, and if it
+> edits a patient, its single line replaces the list.
 
 ### Backups and recovery
 

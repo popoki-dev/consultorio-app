@@ -154,7 +154,7 @@ Future<void> markDone(BuildContext context, Appointment a) async {
     from: dateOnly(a.startAt),
     suggestion: patient == null
         ? null
-        : suggestReturn(patient, data.careLine(patient.careLineId), a.startAt),
+        : suggestReturn(patient, data.careLinesOf(patient), a.startAt),
   );
   if (result == null) return;
   a

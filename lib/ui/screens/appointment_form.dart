@@ -141,10 +141,10 @@ class _AppointmentFormScreenState extends State<AppointmentFormScreen> {
   Widget build(BuildContext context) {
     final data = context.watch<AppData>();
     final patient = data.patient(_patientId);
-    final line = data.careLine(patient?.careLineId);
+    final lines = data.careLinesOf(patient);
     final last = patient == null ? null : data.lastVisit(patient.id);
     final clashes = _clashes(data);
-    final suggestion = patient == null ? null : suggestReturn(patient, line, _day);
+    final suggestion = patient == null ? null : suggestReturn(patient, lines, _day);
 
     return Scaffold(
       appBar: AppBar(
@@ -168,7 +168,7 @@ class _AppointmentFormScreenState extends State<AppointmentFormScreen> {
               children: [
                 patient == null
                     ? const Icon(Icons.person_search_outlined, size: 30)
-                    : Avatar(name: patient.name, color: line?.colorValue ?? AppColors.yellowSoft, size: 42),
+                    : Avatar(name: patient.name, color: lines.firstOrNull?.colorValue ?? AppColors.yellowSoft, size: 42),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -181,7 +181,7 @@ class _AppointmentFormScreenState extends State<AppointmentFormScreen> {
                       if (patient != null)
                         Text(
                           'Última consulta: ${last == null ? 'nenhuma' : fmtDate(last.startAt)}'
-                          '${line == null ? '' : ' · ${line.name}'}',
+                          '${lines.map((l) => ' · ${l.name}').join()}',
                           style: const TextStyle(color: AppColors.muted, fontSize: 12),
                         ),
                     ],

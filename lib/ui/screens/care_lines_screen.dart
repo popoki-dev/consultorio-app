@@ -56,7 +56,7 @@ class CareLinesScreen extends StatelessWidget {
                         children: [
                           Text(c.name, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
                           Text(
-                            '${data.patients.where((p) => p.careLineId == c.id).length} pacientes · '
+                            '${data.patients.where((p) => p.careLineIds.contains(c.id)).length} pacientes · '
                             'retorno padrão: ${c.defaultReturnDays == null ? 'não definido' : '${c.defaultReturnDays} dias'}',
                             style: const TextStyle(fontSize: 12, color: AppColors.muted),
                           ),
@@ -132,7 +132,7 @@ class _CareLineEditorState extends State<_CareLineEditor> {
   Future<void> _delete() async {
     final data = context.read<AppData>();
     final c = widget.existing!;
-    final inUse = data.patients.where((p) => p.careLineId == c.id).length;
+    final inUse = data.patients.where((p) => p.careLineIds.contains(c.id)).length;
     if (inUse > 0) {
       showSnack(context, 'Há $inUse paciente(s) nesta linha. Mova-os antes de excluir.');
       return;

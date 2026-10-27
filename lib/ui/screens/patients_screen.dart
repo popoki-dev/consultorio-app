@@ -44,7 +44,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
     final data = context.watch<AppData>();
     final q = _search.text;
     final list = data.patients
-        .where((p) => (_careLine == null || p.careLineId == _careLine) && matchesPatient(p, q))
+        .where((p) => (_careLine == null || p.careLineIds.contains(_careLine)) && matchesPatient(p, q))
         .toList();
     final lastVisits = data.lastVisitByPatient();
     final pending = pendingByPatient(data);
@@ -136,7 +136,7 @@ class _PatientsScreenState extends State<PatientsScreen> {
                 final p = list[i - 1];
                 return PatientCard(
                   patient: p,
-                  line: data.careLine(p.careLineId),
+                  lines: data.careLinesOf(p),
                   lastVisit: lastVisits[p.id],
                   pending: pending[p.id] ?? 0,
                 );
@@ -159,13 +159,13 @@ class PatientCard extends StatelessWidget {
   const PatientCard({
     super.key,
     required this.patient,
-    required this.line,
+    required this.lines,
     required this.lastVisit,
     required this.pending,
   });
 
   final Patient patient;
-  final CareLine? line;
+  final List<CareLine> lines;
   final DateTime? lastVisit;
   final int pending;
 
@@ -178,7 +178,7 @@ class PatientCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Avatar(name: patient.name, color: line?.colorValue ?? AppColors.salmonSoft),
+          Avatar(name: patient.name, color: lines.firstOrNull?.colorValue ?? AppColors.salmonSoft),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -194,7 +194,7 @@ class PatientCard extends StatelessWidget {
                 Text(
                   [
                     ageLabel(patient.birthDate),
-                    if (line != null) line!.name,
+                    ...lines.map((l) => l.name),
                     if (patient.pregnant) 'Gestante ${gestationalAge(patient.dum!, today()).short}',
                   ].join(' · '),
                   style: const TextStyle(fontSize: 12, color: AppColors.muted),
