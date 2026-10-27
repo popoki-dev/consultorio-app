@@ -44,7 +44,11 @@ class LockService {
       return await _auth.authenticate(
         localizedReason: 'Desbloqueie para acessar os dados dos pacientes',
         authMessages: _messages,
-        options: const AuthenticationOptions(stickyAuth: true, biometricOnly: false),
+        // Sem stickyAuth: no Android 9 e 10 o PIN abre outra tela, o app
+        // pausa e, com stickyAuth, o plugin recomeça a autenticação ao
+        // voltar e perde o PIN já confirmado. Se o usuário cancelar ou sair,
+        // o LockGate continua bloqueado com o botão "Desbloquear".
+        options: const AuthenticationOptions(stickyAuth: false, biometricOnly: false),
       );
     } catch (_) {
       return false;
