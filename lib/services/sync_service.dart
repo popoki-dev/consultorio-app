@@ -135,7 +135,7 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
 
       for (final remote in rows) {
         final serverTs = remote['server_updated_at'].toString();
-        changed = await _merge(table, await _localRow(table, remote)) || changed;
+        changed = await merge(table, await _localRow(table, remote)) || changed;
         // Normaliza para UTC com "Z" (evita "+" na URL do filtro).
         cursor = DateTime.parse(serverTs).toUtc().toIso8601String();
       }
@@ -158,7 +158,9 @@ class SyncService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Aplica uma linha do servidor. Retorna true se o banco local mudou.
-  Future<bool> _merge(String table, Map<String, Object?> row) async {
+  /// Público para os testes (não depende do Supabase).
+  @visibleForTesting
+  Future<bool> merge(String table, Map<String, Object?> row) async {
     final id = row['id'] as String;
     final remoteVersion = row['updated_at'] as String;
     final local = await db.byId(table, id);
