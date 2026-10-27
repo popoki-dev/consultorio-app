@@ -23,6 +23,9 @@ dependencies:
 
   # Bloqueio por biometria / senha do aparelho
   local_auth: ^2.3.0
+  # Textos do diálogo de biometria em pt-BR (o padrão é inglês).
+  local_auth_android: ^1.0.56
+  local_auth_darwin: ^1.6.1
 
   # Lembretes (notificações locais agendadas, funcionam offline)
   flutter_local_notifications: ^18.0.1
